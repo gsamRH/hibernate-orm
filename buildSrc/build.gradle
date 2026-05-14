@@ -5,7 +5,9 @@
  * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 repositories {
-	mavenCentral()
+    maven {
+        url "https://repository.engineering.redhat.com/nexus/repository/central/"
+    }
 	jcenter()
 }
 
