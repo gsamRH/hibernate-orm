@@ -847,6 +847,128 @@ oracle_23() {
     oracle_free_setup
 }
 
+sybase() {
+    $CONTAINER_CLI rm -f sybase || true
+    # Yup, that sucks, but on ubuntu we need to use -T11889 as per: https://github.com/DataGrip/docker-env/issues/12
+    $CONTAINER_CLI run -d -p 9000:5000 -p 9001:5001 --name sybase --entrypoint /bin/bash ${DB_IMAGE_SYBASE:-docker.io/nguoianphu/docker-sybase} -c "source /opt/sybase/SYBASE.sh
+/opt/sybase/ASE-16_0/bin/dataserver \
+-d/opt/sybase/data/master.dat \
+-e/opt/sybase/ASE-16_0/install/MYSYBASE.log \
+-c/opt/sybase/ASE-16_0/MYSYBASE.cfg \
+-M/opt/sybase/ASE-16_0 \
+-N/opt/sybase/ASE-16_0/sysam/MYSYBASE.properties \
+-i/opt/sybase \
+-sMYSYBASE \
+-T11889
+RET=\$?
+exit 0
+"
+
+    sybase_check() {
+    $CONTAINER_CLI exec sybase bash -c "source /opt/sybase/SYBASE.sh;
+/opt/sybase/OCS-16_0/bin/isql -Usa -P myPassword -S MYSYBASE <<EOF
+Select name from sysdatabases where status2 & 48 > 0
+go
+quit
+EOF
+"
+}
+    START_STATUS=0
+    j=1
+    while (( $j < 30 )); do
+      echo "Waiting for Sybase to start..."
+      sleep 1
+      j=$((j+1))
+      START_STATUS=$(sybase_check | grep '(0 rows affected)' | wc -c)
+      if (( $START_STATUS > 0 )); then
+        break
+      fi
+    done
+    if (( $j == 30 )); then
+      echo "Failed starting Sybase"
+      $CONTAINER_CLI ps -a
+      $CONTAINER_CLI logs sybase
+      sybase_check
+      exit 1
+    fi
+
+    export SYBASE_DB=hibernate_orm_test
+    export SYBASE_USER=hibernate_orm_test
+    export SYBASE_PASSWORD=hibernate_orm_test
+    $CONTAINER_CLI exec sybase bash -c "source /opt/sybase/SYBASE.sh;
+cat <<-EOSQL > init1.sql
+use master
+go
+disk resize name='master', size='256m'
+go
+create database $SYBASE_DB on master = '96m'
+go
+sp_dboption $SYBASE_DB, \"single user\", true
+go
+alter database $SYBASE_DB log on master = '50m'
+go
+use $SYBASE_DB
+go
+exec sp_extendsegment logsegment, $SYBASE_DB, master
+go
+use master
+go
+sp_dboption $SYBASE_DB, \"single user\", false
+go
+use $SYBASE_DB
+go
+checkpoint
+go
+use master
+go
+create login $SYBASE_USER with password $SYBASE_PASSWORD
+go
+exec sp_dboption $SYBASE_DB, 'abort tran on log full', true
+go
+exec sp_dboption $SYBASE_DB, 'allow nulls by default', true
+go
+exec sp_dboption $SYBASE_DB, 'ddl in tran', true
+go
+exec sp_dboption $SYBASE_DB, 'trunc log on chkpt', true
+go
+exec sp_dboption $SYBASE_DB, 'full logging for select into', true
+go
+exec sp_dboption $SYBASE_DB, 'full logging for alter table', true
+go
+sp_dboption $SYBASE_DB, \"select into\", true
+go
+sp_dboption tempdb, 'ddl in tran', true
+go
+EOSQL
+
+/opt/sybase/OCS-16_0/bin/isql -Usa -P myPassword -S MYSYBASE -i ./init1.sql
+
+echo =============== CREATING DB ==========================
+cat <<-EOSQL > init2.sql
+use $SYBASE_DB
+go
+sp_adduser '$SYBASE_USER', '$SYBASE_USER', null
+go
+grant create default to $SYBASE_USER
+go
+grant create table to $SYBASE_USER
+go
+grant create view to $SYBASE_USER
+go
+grant create rule to $SYBASE_USER
+go
+grant create function to $SYBASE_USER
+go
+grant create procedure to $SYBASE_USER
+go
+commit
+go
+EOSQL
+
+/opt/sybase/OCS-16_0/bin/isql -Usa -P myPassword -S MYSYBASE -i ./init2.sql"
+    echo "Sybase successfully started"
+}
+
 hana() {
     temp_dir=$(mktemp -d)
     echo '{"master_password" : "H1bernate_test"}' >$temp_dir/password.json

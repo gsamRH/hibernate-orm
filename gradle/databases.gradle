@@ -113,6 +113,13 @@ ext {
                         'jdbc.user'  : 'VLAD',
                         'jdbc.pass'  : 'V1ad_test',
                         'jdbc.url'   : 'jdbc:sap://localhost:39015/'
+                ],
+                sybase : [
+                        'db.dialect' : 'org.hibernate.dialect.SybaseASEDialect',
+                        'jdbc.driver': 'net.sourceforge.jtds.jdbc.Driver',
+                        'jdbc.user'  : 'hibernate_orm_test',
+                        'jdbc.pass'  : 'hibernate_orm_test',
+                        'jdbc.url'   : 'jdbc:jtds:sybase://localhost:9000/hibernate_orm_test'
                 ]
         ]
 }
